@@ -12,6 +12,7 @@ const ui = {
   models: { current: null, options: [] },
   thread: { entry: null, messages: [] },
   ptt: false,
+  music: null,
   alarms: { synced: true, items: [], missed: [], ringing: null, volume: 70, tone: 'coffee', tones: {} },
 };
 
@@ -868,6 +869,30 @@ function showVolume(v) {
   hudTimer = setTimeout(() => $('hud').classList.remove('on'), 1600);
 }
 
+
+/* ---- now playing ---- */
+function fmtTime(sec) {
+  sec = Math.max(0, Math.floor(Number(sec) || 0));
+  return Math.floor(sec / 60) + ':' + pad(sec % 60);
+}
+function renderMusic() {
+  const m = ui.music;
+  const on = !!(m && m.title && m.state !== 'stopped');
+  $('player').hidden = !on;
+  document.body.classList.toggle('has-player', on);
+  if (!on) return;
+  $('playerTitle').textContent = m.title || '';
+  $('playerArtist').textContent = (m.artists || []).join(' / ');
+  const img = $('playerCoverImg');
+  if (m.cover) img.src = m.cover; else img.removeAttribute('src');
+  const dur = Number(m.duration) || 0, pos = Number(m.position) || 0;
+  $('playerFill').style.transform = 'scaleX(' + (dur ? Math.min(1, pos / dur) : 0) + ')';
+  $('playerPos').textContent = fmtTime(pos);
+  $('playerDur').textContent = fmtTime(dur);
+  $('playerToggle').classList.toggle('paused', !!m.paused);
+  $('playerToggle').setAttribute('aria-label', m.paused ? '继续' : '暂停');
+}
+
 /* ---- events from the client ---- */
 const handlers = {
   snapshot(s) {
@@ -879,6 +904,7 @@ const handlers = {
     seenThreads[s.thread.entry] = s.thread.messages;
     if (s.update) { ui.version = s.version; ui.update = s.update; }   // the demo's snapshots have none
     if (s.alarms) ui.alarms = s.alarms;
+    if (s.music !== undefined) { ui.music = s.music; renderMusic(); }
     renderModels(); renderThread(); renderStatus(); renderAlarms();
     updateFinished((s.update || {}).job);
   },
@@ -915,6 +941,9 @@ const handlers = {
   alarms(a) {
     ui.alarms = a; renderAlarms();
   },
+  music(m) {
+    ui.music = m; renderMusic();
+  },
   level(l) {
     level.target = ui.status.state === 'speaking' ? Math.min(1, l.out * 6) : micLevel(l.mic);
   },
@@ -926,6 +955,9 @@ function connectEvents() {
 }
 
 /* ---- buttons ---- */
+$('playerToggle').addEventListener('click', () => post('/api/music', { action: ui.music && ui.music.paused ? 'resume' : 'pause' }));
+$('playerPrev').addEventListener('click', () => post('/api/music', { action: 'prev' }));
+$('playerNext').addEventListener('click', () => post('/api/music', { action: 'next' }));
 function post(path, body) {
   if (DEMO) return demo.action(path, body);
   const opts = { method: 'POST' };

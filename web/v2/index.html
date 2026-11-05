@@ -107,6 +107,20 @@
   </main>
 </div>
 
+<section class="player" id="player" hidden aria-label="正在播放">
+  <div class="player-cover" id="playerCover"><img id="playerCoverImg" alt=""></div>
+  <div class="player-info">
+    <div class="player-line"><b id="playerTitle"></b><span id="playerArtist"></span></div>
+    <div class="player-bar"><i id="playerFill"></i></div>
+    <div class="player-time"><span id="playerPos">0:00</span><span id="playerDur">0:00</span></div>
+  </div>
+  <div class="player-controls">
+    <button class="player-btn" id="playerPrev" aria-label="上一首"></button>
+    <button class="player-btn main" id="playerToggle" aria-label="暂停"></button>
+    <button class="player-btn" id="playerNext" aria-label="下一首"></button>
+  </div>
+</section>
+
 <div class="sheet" id="sheet">
   <div class="sheet-bar">
     <div><h2>选择模型</h2><p>切换后，新的提问交给它回答；每个模型各自保留对话</p></div>

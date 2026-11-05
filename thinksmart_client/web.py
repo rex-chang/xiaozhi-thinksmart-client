@@ -57,6 +57,11 @@ def make_app(client: Client):
         asyncio.create_task(client.say(body.get('text', '')))
         return web.json_response({'ok': True})
 
+    async def music(request):
+        body = await request.json()
+        asyncio.create_task(client.music_action(body.get('action', '')))
+        return web.json_response({'ok': True})
+
     async def model(request):
         body = await request.json()
         return web.json_response(await client.set_model(body.get('kind'), body.get('vendor'), body.get('entry')))
@@ -172,6 +177,7 @@ def make_app(client: Client):
     app.router.add_post('/api/ptt/stop', action(client.ptt_stop))
     app.router.add_post('/api/model', model)
     app.router.add_post('/api/text', text)
+    app.router.add_post('/api/music', music)
     app.router.add_post('/api/sleep', sleep_setting)
     app.router.add_post('/api/brightness', brightness)
     app.router.add_post('/api/screen-off', screen_off)

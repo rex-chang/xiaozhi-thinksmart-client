@@ -399,3 +399,51 @@ body[data-state="listening"] .mic-ring { opacity: .75; }
 
 /* ?demo=<scene>&still: freeze transitions so headless screenshots show the settled scene */
 .still *, .still *::before, .still *::after { transition: none !important; animation: none !important; }
+
+
+/* ---- now playing (NetEase through mpv) ---- */
+.player { position: fixed; left: 36px; right: 36px; bottom: 24px; height: 92px; z-index: 15;
+  display: flex; align-items: center; gap: 16px; padding: 0 18px; border-radius: 24px;
+  border: 1px solid #ffffff1f; background: linear-gradient(180deg, #101832f2, #080d1ef2);
+  box-shadow: 0 18px 60px #00000066, inset 0 1px 0 #ffffff14;
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }
+.player[hidden] { display: none; }
+body.has-player .app { padding-bottom: 128px; }
+.player-cover { width: 64px; height: 64px; border-radius: 16px; flex: none; overflow: hidden;
+  background: linear-gradient(135deg, #2b3566, #141a35); box-shadow: 0 6px 18px #00000055; }
+.player-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.player-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.player-line { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.player-line b { font-size: 20px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player-line span { font-size: 15px; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player-bar { height: 4px; border-radius: 999px; background: #ffffff1a; overflow: hidden; }
+.player-bar i { display: block; height: 100%; width: 100%; transform-origin: 0 50%; transform: scaleX(0);
+  background: linear-gradient(90deg, var(--accent2), var(--accent)); border-radius: inherit; transition: transform .25s linear; }
+.player-time { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink3);
+  font-variant-numeric: tabular-nums; margin-top: -2px; }
+.player-controls { display: flex; align-items: center; gap: 10px; flex: none; }
+.player-btn { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center;
+  color: var(--ink); background: #ffffff0f; border: 1px solid #ffffff14; transition: transform .12s, background .2s; }
+.player-btn:active { transform: scale(.92); background: #ffffff1f; }
+.player-btn.main { width: 56px; height: 56px; background: #ffffff1a; color: #fff;
+  border: 1px solid #ffffff2b; box-shadow: 0 8px 24px #0000003d, inset 0 1px 0 #ffffff1f; }
+.player-btn.main:active { background: #ffffff28; }
+
+/* control glyphs drawn in CSS: WebKit did not paint the inline SVGs inside these buttons */
+#playerToggle { position: relative; }
+#playerToggle::before, #playerToggle::after { content: ''; position: absolute; top: 50%; transform: translateY(-50%);
+  background: #fff; border-radius: 2px; }
+#playerToggle::before { width: 5px; height: 18px; left: calc(50% - 7px); }
+#playerToggle::after { width: 5px; height: 18px; left: calc(50% + 2px); }
+#playerToggle.paused::before { width: 0; height: 0; left: calc(50% - 7px); background: transparent; border-radius: 0;
+  border-left: 15px solid #fff; border-top: 9px solid transparent; border-bottom: 9px solid transparent; }
+#playerToggle.paused::after { display: none; }
+#playerPrev, #playerNext { position: relative; }
+#playerPrev::before, #playerNext::before { content: ''; position: absolute; top: 50%; width: 4px; height: 18px;
+  background: #fff; border-radius: 1px; transform: translateY(-50%); }
+#playerPrev::after, #playerNext::after { content: ''; position: absolute; top: 50%; width: 0; height: 0;
+  transform: translateY(-50%); }
+#playerPrev::before { left: 15px; }
+#playerPrev::after { left: 19px; border-right: 13px solid #fff; border-top: 8px solid transparent; border-bottom: 8px solid transparent; }
+#playerNext::before { right: 15px; }
+#playerNext::after { right: 19px; border-left: 13px solid #fff; border-top: 8px solid transparent; border-bottom: 8px solid transparent; }
