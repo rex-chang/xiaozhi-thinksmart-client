@@ -568,8 +568,13 @@ $('tones').addEventListener('click', e => {
   if (DEMO) { ui.alarms.tone = b.dataset.tone; return renderAlarms(); }
   postJson('/api/alarm-tone', { tone: b.dataset.tone }).then(() => postJson('/api/alarm-tone', { tone: b.dataset.tone, preview: true }));
 });
-$('missedClear').addEventListener('click', () => (DEMO ? handlers.alarms(Object.assign({}, ui.alarms, { missed: [] }))
-                                                       : postJson('/api/alarms/missed/clear')));
+$('missedClear').addEventListener('click', () => {
+  if (DEMO) { handlers.alarms(Object.assign({}, ui.alarms, { missed: [] })); return; }
+  // hide at once: the client may already have cleared it, and a missed SSE event must not
+  // leave the banner on screen
+  handlers.alarms(Object.assign({}, ui.alarms, { missed: [] }));
+  postJson('/api/alarms/missed/clear').catch(() => {});
+});
 $('ringStop').addEventListener('click', () => post('/api/alarms/stop'));
 $('ringSnooze').addEventListener('click', () => {
   if (DEMO) return post('/api/alarms/snooze');
