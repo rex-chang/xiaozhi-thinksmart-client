@@ -121,6 +121,52 @@
   </div>
 </section>
 
+<section class="pf" id="pf" aria-hidden="true" style="display:none">
+  <div class="pf-bg" id="pfBg"></div>
+  <div class="pf-scrim"></div>
+  <header class="pf-top">
+    <button class="pf-close" id="pfClose" aria-label="收起"></button>
+    <div class="pf-heading">正在播放</div>
+    <button class="pf-list-btn" id="pfListBtn" aria-label="播放列表">
+      <span class="pf-bars"><i></i><i></i><i></i></span>
+    </button>
+  </header>
+  <main class="pf-main">
+    <div class="pf-left">
+      <div class="pf-art"><img id="pfCover" alt=""></div>
+      <h1 class="pf-title" id="pfTitle"></h1>
+      <p class="pf-artist" id="pfArtist"></p>
+      <p class="pf-album" id="pfAlbum"></p>
+      <div class="pf-progress" id="pfProgress"><i id="pfFill"></i><b id="pfKnob"></b></div>
+      <div class="pf-times"><span id="pfPos">0:00</span><span id="pfDur">0:00</span></div>
+      <div class="pf-controls">
+        <button class="pf-btn" id="pfPrev" aria-label="上一首"></button>
+        <button class="pf-btn main" id="pfToggle" aria-label="暂停"></button>
+        <button class="pf-btn" id="pfNext" aria-label="下一首"></button>
+      </div>
+    </div>
+    <div class="pf-right">
+      <div class="pf-lyrics" id="pfLyrics" role="button" aria-label="展开完整歌词">
+        <div class="pf-line prev" id="pfPrevLine"></div>
+        <div class="pf-line cur" id="pfCurLine"></div>
+        <div class="pf-line next" id="pfNextLine"></div>
+        <div class="pf-trans" id="pfTrans"></div>
+      </div>
+      <div class="pf-all" id="pfAll"></div>
+    </div>
+  </main>
+  <div class="pf-drawer" id="pfDrawer">
+    <div class="pf-drawer-top">
+      <div class="pf-tabs">
+        <button data-tab="queue" class="on">播放队列</button>
+        <button data-tab="playlists">我的歌单</button>
+      </div>
+      <button class="pf-drawer-close" id="pfDrawerClose" aria-label="收起列表">收起</button>
+    </div>
+    <div class="pf-list" id="pfList"></div>
+  </div>
+</section>
+
 <div class="sheet" id="sheet">
   <div class="sheet-bar">
     <div><h2>选择模型</h2><p>切换后，新的提问交给它回答；每个模型各自保留对话</p></div>
@@ -258,6 +304,7 @@
   <div class="hud-num" id="hudNum">0</div>
 </div>
 
+<script src="/static/v2/vendor/anime.umd.min.js"></script>
 <script src="/static/v2/app.js"></script>
 </body>
 </html>

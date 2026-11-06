@@ -270,6 +270,17 @@ class Client:
         asyncio.create_task(self._report_poller())
         asyncio.create_task(self._alarm_loop())
         asyncio.create_task(self._music_loop())
+        asyncio.create_task(self._music_sync())
+
+    async def _music_sync(self):
+        """After a restart the page needs the current player state before the first wake."""
+        try:
+            async with self.connecting:
+                if not self.hub.connected:
+                    await self.hub.connect()
+                await self.hub.send({'type': 'music', 'action': 'status'})
+        except Exception as e:
+            log.debug('music status sync failed: %s', e)
 
     # ---- microphone (worker thread) ----
 
@@ -387,6 +398,12 @@ class Client:
         # a new connection has no old reply to drop: the hub's own announcements (reports) send no
         # "tts start", so a mute left over from the last abort/end would silence them
         self.mute_audio = False
+        # after a restart/reconnect the client has no music state; ask the hub what mpv is playing
+        # so the now-playing bar comes back without waiting for the next voice command
+        try:
+            await self.hub.send({'type': 'music', 'action': 'status'})
+        except Exception:
+            pass
         return True
 
     async def voice_wake(self, label, audio):
@@ -521,13 +538,14 @@ class Client:
         await self.hub.send({'type': 'listen', 'state': 'detect', 'text': text})
         self.set_state('thinking')
 
-    async def music_action(self, action):
-        """A button on the now-playing bar: control playback without a model turn."""
-        if action not in ('pause', 'resume', 'next', 'prev', 'stop'):
+    async def music_action(self, action, value=''):
+        """Controls and data requests from the player page, without a model turn."""
+        if action not in ('pause', 'resume', 'next', 'prev', 'stop', 'seek',
+                          'status', 'lyrics', 'playlists', 'play_playlist', 'playlist_tracks', 'play_playlist_track', 'play_index', 'queue'):
             return
         if not await self.ensure_connected():
             return
-        await self.hub.send({'type': 'music', 'action': action})
+        await self.hub.send({'type': 'music', 'action': action, 'value': value})
 
     async def ptt_start(self):
         if self.mic_off_toast():
@@ -700,8 +718,12 @@ class Client:
                 else:
                     self.set_state('idle')
         elif kind == 'music':
-            self.music = {k: v for k, v in msg.items() if k != 'type'}
-            self.events.publish('music', self.music)
+            subtype = msg.get('subtype')
+            if subtype:
+                self.events.publish(f'music_{subtype}', msg)
+            else:
+                self.music = {k: v for k, v in msg.items() if k != 'type'}
+                self.events.publish('music', self.music)
         elif kind == 'mcp':
             payload = msg.get('payload') or {}
             reply = await mcp.handle(payload, client=self)
