@@ -577,3 +577,34 @@ body.player-open .core, body.player-open .face, body.player-open .eye, body.play
   display: grid; place-items: center; font-family: "DejaVu Sans", "Noto Sans CJK SC", sans-serif;
   font-size: 24px; line-height: 1; box-shadow: 0 4px 14px #00000033; }
 .msg-retry:active { transform: scale(.94); background: #ffffff30; }
+
+/* ---- device status sheet ---- */
+.status-dot { position: absolute; top: 9px; right: 9px; width: 11px; height: 11px; border-radius: 50%;
+  background: #5be3a0; box-shadow: 0 0 0 3px var(--bg1); opacity: 0; transition: opacity .2s, background .2s; }
+.status-dot.ok { opacity: 1; }
+.status-dot.bad { opacity: 1; background: #ff6b6b; }
+.status-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px;
+  align-content: start; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  padding-bottom: 8px; scrollbar-width: none; transform: translateY(18px); transition: transform .3s ease-out; }
+.status-grid::-webkit-scrollbar { display: none; }
+.sheet.on .status-grid { transform: none; }
+.status-card { display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; border-radius: 24px;
+  background: var(--card); border: 1.5px solid var(--line); min-height: 150px; }
+.status-card.wide { grid-column: span 2; }
+.status-card h3 { margin: 0; font-size: 15px; letter-spacing: 2px; font-weight: 600; color: var(--ink3); }
+.status-card .big { font-size: 34px; line-height: 1.15; font-weight: 700; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.status-card small { font-size: 14px; line-height: 1.5; color: var(--ink3); }
+.status-card .bar { height: 8px; margin-top: auto; border-radius: 999px; background: #ffffff14; overflow: hidden; }
+.status-card .bar i { display: block; height: 100%; border-radius: inherit; transform-origin: 0 50%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+.status-card .row { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 0; border-top: 1px solid #ffffff0e; font-size: 16px; }
+.status-card .row:first-of-type { border-top: 0; }
+.status-card .row span { color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status-card .row b { font-weight: 600; font-size: 15px; white-space: nowrap; color: var(--ink); }
+.status-card .row b > i { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%;
+  background: #5be3a0; vertical-align: 1px; }
+.status-card .row b.bad { color: var(--warn); }
+.status-card .row b.bad > i { background: #ff6b6b; }
+.status-card .rows { display: flex; flex-direction: column; }

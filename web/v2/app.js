@@ -715,6 +715,108 @@ async function renderIp() {
 }
 $('btnSettings').addEventListener('click', () => { $('settings').classList.add('on'); renderIp(); });
 
+/* ---- device status ---- */
+function fmtUptime(sec) {
+  sec = Math.max(0, Number(sec) || 0);
+  const days = Math.floor(sec / 86400), hours = Math.floor((sec % 86400) / 3600), mins = Math.floor((sec % 3600) / 60);
+  return days ? `${days} 天 ${hours} 小时` : `${hours} 小时 ${mins} 分`;
+}
+function statusBar(pct) {
+  const value = Math.max(0, Math.min(1, (Number(pct) || 0) / 100));
+  return `<div class="bar"><i style="transform:scaleX(${value.toFixed(3)})"></i></div>`;
+}
+function statusCard(title, body, cls = '') {
+  return `<div class="status-card ${cls}"><h3>${title}</h3>${body}</div>`;
+}
+function serviceRow(name, state) {
+  const ok = state === 'active';
+  return `<div class="row"><span>${esc(name)}</span><b class="${ok ? '' : 'bad'}"><i></i>${esc(state || 'unknown')}</b></div>`;
+}
+function demoStatus() {
+  return {
+    version: '0.1.5', uptime_s: 228000,
+    cpu: { cores: 8, used_percent: 7.6, load: [1.5, 1.7, 2.1] },
+    memory: { total_mb: 1937, used_mb: 1330, available_mb: 607, swap_used_mb: 64 },
+    disk: { total_gb: 6.4, used_gb: 4.4, free_gb: 1.7 },
+    temperature_c: 35.8,
+    services: { client: 'active', kiosk: 'active', hub: 'active' },
+    processes: [
+      { name: 'python', rss_mb: 671 }, { name: 'WebKitWebProces', rss_mb: 238 },
+      { name: 'python3', rss_mb: 178 }, { name: 'mpv', rss_mb: 88 }, { name: 'weston', rss_mb: 84 },
+    ],
+    music: null, update: { current: '0.1.5', available: null },
+  };
+}
+function renderStatus(d) {
+  const cpu = d.cpu || {}, mem = d.memory || {}, disk = d.disk || {};
+  const svc = d.services || {}, music = d.music || {}, upd = d.update || {};
+  const cpuPct = cpu.used_percent == null ? null : Number(cpu.used_percent);
+  const memPct = mem.total_mb ? (Number(mem.used_mb) || 0) * 100 / mem.total_mb : 0;
+  const diskPct = disk.total_gb ? (Number(disk.used_gb) || 0) * 100 / disk.total_gb : 0;
+  const load = (cpu.load || []).map(x => Number(x).toFixed(1)).join(' / ');
+  const cpuBody = `<div class="big">${cpuPct == null ? '—' : cpuPct + '%'}</div>` +
+    `<small>${cpu.cores || '?'} 核 · 负载 ${load || '—'}</small>${statusBar(cpuPct)}`;
+  const memBody = `<div class="big">${mem.used_mb ?? '?'} / ${mem.total_mb ?? '?'} MB</div>` +
+    `<small>可用 ${mem.available_mb ?? '?'} MB · swap ${mem.swap_used_mb ?? '?'} MB</small>${statusBar(memPct)}`;
+  const diskBody = `<div class="big">${disk.free_gb ?? '?'} GB 可用</div>` +
+    `<small>${disk.used_gb ?? '?'} / ${disk.total_gb ?? '?'} GB 已用</small>${statusBar(diskPct)}`;
+  const tempBody = `<div class="big">${d.temperature_c ?? '—'} °C</div>` +
+    `<small>已运行 ${fmtUptime(d.uptime_s)} · 版本 ${esc(d.version || '?')}</small>`;
+  const svcBody = serviceRow('client', svc.client) + serviceRow('kiosk', svc.kiosk) + serviceRow('hub', svc.hub);
+  const updBody = `<div class="big">${esc(upd.current || d.version || '—')}</div>` +
+    `<small>${upd.available ? '可更新到 ' + esc(upd.available) : '已是最新'}` +
+    `${upd.check_error ? ' · ' + esc(upd.check_error) : ''}</small>`;
+  let musicBody;
+  if (music && music.state !== 'stopped' && music.title) {
+    musicBody = `<div class="big">${esc(music.title)}</div>` +
+      `<small>${esc((music.artists || []).join(' / '))} · ${fmtTime(music.position)} / ${fmtTime(music.duration)} · 队列 ${music.queue ?? '?'} 首</small>`;
+  } else {
+    musicBody = '<div class="big">未播放</div><small>当前没有在放歌</small>';
+  }
+  const rows = (d.processes || []).slice(0, 6).map(p =>
+    `<div class="row"><span>${esc(p.name)}</span><b>${p.rss_mb} MB</b></div>`).join('') || '<small>无数据</small>';
+  $('statusGrid').innerHTML = [
+    statusCard('CPU', cpuBody),
+    statusCard('内存', memBody),
+    statusCard('磁盘', diskBody),
+    statusCard('温度 / 运行', tempBody),
+    statusCard('服务', svcBody),
+    statusCard('更新', updBody),
+    statusCard('正在播放', musicBody, 'wide'),
+    statusCard('进程内存', `<div class="rows">${rows}</div>`),
+  ].join('');
+  $('statusUpdated').textContent = `每 3 秒刷新 · ${new Date().toLocaleTimeString()}`;
+  const states = Object.values(svc);
+  $('statusDot').className = 'status-dot ' + (states.length && states.every(x => x === 'active') ? 'ok' : 'bad');
+}
+let statusTimer = null;
+async function loadStatus() {
+  if (DEMO !== null) { renderStatus(demoStatus()); return; }
+  try {
+    const response = await fetch('/api/status', { cache: 'no-store' });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    renderStatus(await response.json());
+  } catch (e) {
+    $('statusUpdated').textContent = '读取失败：' + e.message;
+    $('statusDot').className = 'status-dot bad';
+  }
+}
+function openStatus() {
+  $('settings').classList.remove('on');
+  $('sheet').classList.remove('on');
+  $('statusSheet').classList.add('on');
+  loadStatus();
+  clearInterval(statusTimer);
+  statusTimer = setInterval(loadStatus, 3000);
+}
+function closeStatus() {
+  $('statusSheet').classList.remove('on');
+  clearInterval(statusTimer);
+  statusTimer = null;
+}
+$('btnStatus').addEventListener('click', openStatus);
+$('statusClose').addEventListener('click', closeStatus);
+
 // 关机: halts the system (it stays dark with the power cable in), so unplugging can't damage it
 let powerArmed = 0;
 function renderPower() {
@@ -1544,6 +1646,7 @@ const demo = DEMO === null ? null : (() => {
 
 tick();
 setInterval(tick, 1000);
+if (new URLSearchParams(location.search).has('status')) setTimeout(openStatus, 500);
 // one-shot blink instead of an infinite compositor animation (the kiosk UI process was
 // committing frames at 60 fps around the clock just for a 5 s eye blink)
 setInterval(() => {

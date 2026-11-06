@@ -38,6 +38,11 @@
       </div>
       <div class="link" id="link"><i></i><span>待机</span></div>
       <div class="clock" id="clock"><span id="time">--:--</span></div>
+      <button class="gear" id="btnStatus" aria-label="设备状态" title="设备状态">
+        <i class="status-dot" id="statusDot"></i>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12h4l2.5-7 5 14L17 12h4"/></svg>
+      </button>
       <button class="gear" id="btnSettings" aria-label="设置"><i class="gear-dot" id="gearDot"></i>
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
@@ -302,6 +307,16 @@
     <path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>
   <div class="hud-bar"><i id="hudFill"></i></div>
   <div class="hud-num" id="hudNum">0</div>
+</div>
+
+<div class="sheet" id="statusSheet">
+  <div class="sheet-bar">
+    <div><h2>设备状态</h2><p id="statusUpdated">正在读取…</p></div>
+    <button class="close" id="statusClose" aria-label="关闭">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="status-grid" id="statusGrid"></div>
 </div>
 
 <script src="/static/v2/vendor/anime.umd.min.js"></script>
