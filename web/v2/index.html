@@ -38,6 +38,11 @@
       </div>
       <div class="link" id="link"><i></i><span>待机</span></div>
       <div class="clock" id="clock"><span id="time">--:--</span></div>
+      <button class="gear" id="btnStatus" aria-label="设备状态" title="设备状态">
+        <i class="status-dot" id="statusDot"></i>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12h4l2.5-7 5 14L17 12h4"/></svg>
+      </button>
       <button class="gear" id="btnSettings" aria-label="设置"><i class="gear-dot" id="gearDot"></i>
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
@@ -102,10 +107,71 @@
           <span class="head-meta" id="headMeta"></span>
         </div>
         <div class="messages" id="messages"></div>
+        <div class="netease-login-card" id="neteaseLoginCard" hidden></div>
       </div>
     </section>
   </main>
 </div>
+
+<section class="player" id="player" hidden aria-label="正在播放">
+  <div class="player-cover" id="playerCover"><img id="playerCoverImg" alt=""></div>
+  <div class="player-info">
+    <div class="player-line"><b id="playerTitle"></b><span id="playerArtist"></span></div>
+    <div class="player-bar"><i id="playerFill"></i></div>
+    <div class="player-time"><span id="playerPos">0:00</span><span id="playerDur">0:00</span></div>
+  </div>
+  <div class="player-controls">
+    <button class="player-btn" id="playerPrev" aria-label="上一首"></button>
+    <button class="player-btn main" id="playerToggle" aria-label="暂停"></button>
+    <button class="player-btn" id="playerNext" aria-label="下一首"></button>
+  </div>
+</section>
+
+<section class="pf" id="pf" aria-hidden="true" style="display:none">
+  <div class="pf-bg" id="pfBg"></div>
+  <div class="pf-scrim"></div>
+  <header class="pf-top">
+    <button class="pf-close" id="pfClose" aria-label="收起"></button>
+    <div class="pf-heading">正在播放</div>
+    <button class="pf-list-btn" id="pfListBtn" aria-label="播放列表">
+      <span class="pf-bars"><i></i><i></i><i></i></span>
+    </button>
+  </header>
+  <main class="pf-main">
+    <div class="pf-left">
+      <div class="pf-art"><img id="pfCover" alt=""></div>
+      <h1 class="pf-title" id="pfTitle"></h1>
+      <p class="pf-artist" id="pfArtist"></p>
+      <p class="pf-album" id="pfAlbum"></p>
+      <div class="pf-progress" id="pfProgress"><i id="pfFill"></i><b id="pfKnob"></b></div>
+      <div class="pf-times"><span id="pfPos">0:00</span><span id="pfDur">0:00</span></div>
+      <div class="pf-controls">
+        <button class="pf-btn" id="pfPrev" aria-label="上一首"></button>
+        <button class="pf-btn main" id="pfToggle" aria-label="暂停"></button>
+        <button class="pf-btn" id="pfNext" aria-label="下一首"></button>
+      </div>
+    </div>
+    <div class="pf-right">
+      <div class="pf-lyrics" id="pfLyrics" role="button" aria-label="展开完整歌词">
+        <div class="pf-line prev" id="pfPrevLine"></div>
+        <div class="pf-line cur" id="pfCurLine"></div>
+        <div class="pf-line next" id="pfNextLine"></div>
+        <div class="pf-trans" id="pfTrans"></div>
+      </div>
+      <div class="pf-all" id="pfAll"></div>
+    </div>
+  </main>
+  <div class="pf-drawer" id="pfDrawer">
+    <div class="pf-drawer-top">
+      <div class="pf-tabs">
+        <button data-tab="queue" class="on">播放队列</button>
+        <button data-tab="playlists">我的歌单</button>
+      </div>
+      <button class="pf-drawer-close" id="pfDrawerClose" aria-label="收起列表">收起</button>
+    </div>
+    <div class="pf-list" id="pfList"></div>
+  </div>
+</section>
 
 <div class="sheet" id="sheet">
   <div class="sheet-bar">
@@ -244,6 +310,17 @@
   <div class="hud-num" id="hudNum">0</div>
 </div>
 
+<div class="sheet" id="statusSheet">
+  <div class="sheet-bar">
+    <div><h2>设备状态</h2><p id="statusUpdated">正在读取…</p></div>
+    <button class="close" id="statusClose" aria-label="关闭">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="status-grid" id="statusGrid"></div>
+</div>
+
+<script src="/static/v2/vendor/anime.umd.min.js"></script>
 <script src="/static/v2/app.js"></script>
 </body>
 </html>

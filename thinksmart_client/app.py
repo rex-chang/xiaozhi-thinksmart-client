@@ -238,6 +238,8 @@ class Client:
             self.screen_off = normalize_screen_off(None)
         self.screen.idle = self._screen_off_seconds()   # written by start()'s release()
         self.reports = 0              # pending on the hub
+        self.music = None             # what the hub says NetEase is playing (for the page)
+        self.netease_login = None     # ephemeral QR-login card state; never part of chat history
         self.hub_seen = 0.0           # monotonic: last answer from the hub's HTTP side (health check)
         self.keys = Keys(on_step=self.volume_step, on_mic=self._on_mic)
         self.volume = None            # the device volume 0-100 (keys, voice, the page), as last read or set
@@ -268,6 +270,18 @@ class Client:
         asyncio.create_task(self._model_poller())
         asyncio.create_task(self._report_poller())
         asyncio.create_task(self._alarm_loop())
+        asyncio.create_task(self._music_loop())
+        asyncio.create_task(self._music_sync())
+
+    async def _music_sync(self):
+        """After a restart the page needs the current player state before the first wake."""
+        try:
+            async with self.connecting:
+                if not self.hub.connected:
+                    await self.hub.connect()
+                await self.hub.send({'type': 'music', 'action': 'status'})
+        except Exception as e:
+            log.debug('music status sync failed: %s', e)
 
     # ---- microphone (worker thread) ----
 
@@ -350,6 +364,7 @@ class Client:
 
     def snapshot(self):
         return {'status': self.status(), 'models': self.models, 'alarms': self.alarm_view(),
+                'music': self.music, 'netease_login': self.netease_login,
                 'thread': {'entry': self.view_entry(), 'messages': self.threads.get(self.view_entry(), [])}}
 
     def view_entry(self):
@@ -384,6 +399,12 @@ class Client:
         # a new connection has no old reply to drop: the hub's own announcements (reports) send no
         # "tts start", so a mute left over from the last abort/end would silence them
         self.mute_audio = False
+        # after a restart/reconnect the client has no music state; ask the hub what mpv is playing
+        # so the now-playing bar comes back without waiting for the next voice command
+        try:
+            await self.hub.send({'type': 'music', 'action': 'status'})
+        except Exception:
+            pass
         return True
 
     async def voice_wake(self, label, audio):
@@ -517,6 +538,31 @@ class Client:
             return   # ended (or dropped) while we waited: nothing will answer, stay idle
         await self.hub.send({'type': 'listen', 'state': 'detect', 'text': text})
         self.set_state('thinking')
+
+    async def music_action(self, action, value=''):
+        """Controls and data requests from the player page, without a model turn."""
+        if action not in ('pause', 'resume', 'next', 'prev', 'stop', 'seek',
+                          'status', 'lyrics', 'playlists', 'play_playlist', 'playlist_tracks', 'play_playlist_track', 'play_index', 'queue'):
+            return
+        if not await self.ensure_connected():
+            return
+        await self.hub.send({'type': 'music', 'action': action, 'value': value})
+
+    async def netease_login_action(self, action, task_id):
+        if action not in ('refresh', 'cancel'):
+            return {'ok': False, 'error': '不支持的登录操作'}
+        task_id = str(task_id or '')
+        if not task_id or len(task_id) > 128 or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_' for c in task_id):
+            return {'ok': False, 'error': '登录任务无效'}
+        path = f'/kiosk/netease/login/{action}'
+        try:
+            result = await self._hub_http(path, {'task_id': task_id})
+        except Exception:
+            return {'ok': False, 'error': '网关没有响应'}
+        if result.get('ok') and result.get('task'):
+            self.netease_login = {'task': result['task'], 'account': result.get('account') or {}}
+            self.events.publish('netease_login', self.netease_login)
+        return result
 
     async def ptt_start(self):
         if self.mic_off_toast():
@@ -688,6 +734,19 @@ class Client:
                     self.set_state('listening')
                 else:
                     self.set_state('idle')
+        elif kind == 'music':
+            subtype = msg.get('subtype')
+            if subtype:
+                self.events.publish(f'music_{subtype}', msg)
+            else:
+                self.music = {k: v for k, v in msg.items() if k != 'type'}
+                self.events.publish('music', self.music)
+        elif kind == 'netease_login':
+            self.netease_login = {
+                'task': dict(msg.get('task') or {}),
+                'account': dict(msg.get('account') or {}),
+            }
+            self.events.publish('netease_login', self.netease_login)
         elif kind == 'mcp':
             payload = msg.get('payload') or {}
             reply = await mcp.handle(payload, client=self)
@@ -1397,6 +1456,55 @@ class Client:
             if up and not self.history_loaded:
                 await self.load_history()   # at start, or once the hub is up
             await asyncio.sleep(MODEL_POLL if up else MODEL_RETRY)
+
+    # ---- now playing (NetEase through mpv) ----
+
+    async def _mpv_props(self):
+        """(position, duration, paused, idle) from mpv's IPC socket, or None."""
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_unix_connection('/run/user/1000/thinksmart-mpv.sock'), 0.6)
+        except (OSError, asyncio.TimeoutError):
+            return None
+        try:
+            for i, prop in enumerate(('time-pos', 'duration', 'pause', 'idle-active'), 1):
+                writer.write(json.dumps({'command': ['get_property', prop], 'request_id': i}).encode() + b'\n')
+            await writer.drain()
+            vals = {}
+            deadline = time.monotonic() + 1.0
+            while len(vals) < 4 and time.monotonic() < deadline:
+                line = await asyncio.wait_for(reader.readline(), max(0.05, deadline - time.monotonic()))
+                if not line:
+                    break
+                try:
+                    msg = json.loads(line)
+                except ValueError:
+                    continue
+                if 'request_id' in msg:
+                    vals[msg['request_id']] = msg.get('data')
+            return (vals.get(1) or 0, vals.get(2) or 0, bool(vals.get(3)), bool(vals.get(4)))
+        except (OSError, asyncio.TimeoutError):
+            return None
+        finally:
+            writer.close()
+
+    async def _music_loop(self):
+        while True:
+            await asyncio.sleep(1)
+            if not self.music:
+                continue
+            props = await self._mpv_props()
+            if props is None:
+                data = dict(self.music, state='stopped', paused=True, position=0)
+            else:
+                pos, dur, paused, idle = props
+                data = dict(self.music)
+                data.update(state='stopped' if idle else ('paused' if paused else 'playing'),
+                            paused=bool(paused), position=round(float(pos or 0), 1),
+                            duration=round(float(dur or data.get('duration') or 0), 1))
+            if data != self.music:
+                self.music = data
+                self.events.publish('music', data)
 
     # ---- timers ----
 

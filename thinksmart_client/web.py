@@ -1,7 +1,11 @@
 """The page the kiosk shows (127.0.0.1 only): static files, an event stream and button actions."""
 import asyncio
+import glob
 import json
 import logging
+import os
+import shutil
+import subprocess
 import time
 
 from aiohttp import web
@@ -14,6 +18,137 @@ WEB = ROOT / 'web'
 # changes on every restart (every deploy restarts the client): the page reloads itself when it
 # reconnects to a different run, so the kiosk never keeps running an old app.js
 BUILD = str(int(time.time()))
+
+
+def _read_meminfo():
+    info = {}
+    try:
+        with open('/proc/meminfo') as f:
+            for line in f:
+                key, value = line.split(':', 1)
+                info[key] = int(value.split()[0])
+    except OSError:
+        pass
+    total = info.get('MemTotal', 0) // 1024
+    avail = info.get('MemAvailable', 0) // 1024
+    swap_total = info.get('SwapTotal', 0) // 1024
+    swap_free = info.get('SwapFree', 0) // 1024
+    return {'total_mb': total, 'used_mb': max(0, total - avail), 'available_mb': avail,
+            'swap_total_mb': swap_total, 'swap_used_mb': max(0, swap_total - swap_free)}
+
+
+def _cpu_snapshot():
+    with open('/proc/stat') as f:
+        parts = f.readline().split()
+    values = [int(x) for x in parts[1:]]
+    idle = values[3] + (values[4] if len(values) > 4 else 0)
+    return idle, sum(values)
+
+
+def _cpu_percent():
+    try:
+        a = _cpu_snapshot()
+        time.sleep(0.35)
+        b = _cpu_snapshot()
+        total = b[1] - a[1]
+        idle = b[0] - a[0]
+        return round(100 * (total - idle) / total, 1) if total > 0 else None
+    except (OSError, ValueError):
+        return None
+
+
+def _disk():
+    try:
+        usage = shutil.disk_usage('/')
+        gb = 1024 ** 3
+        return {'total_gb': round(usage.total / gb, 1), 'used_gb': round(usage.used / gb, 1),
+                'free_gb': round(usage.free / gb, 1)}
+    except OSError:
+        return {}
+
+
+def _temperature():
+    values = []
+    for path in glob.glob('/sys/class/thermal/thermal_zone*/temp'):
+        try:
+            with open(path) as f:
+                values.append(int(f.read().strip()) / 1000)
+        except (OSError, ValueError):
+            pass
+    return round(max(values), 1) if values else None
+
+
+def _service(name, user=False):
+    cmd = ['systemctl'] + (['--user'] if user else []) + ['is-active', name]
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=2).stdout.strip() or 'unknown'
+    except (OSError, subprocess.SubprocessError):
+        return 'unknown'
+
+
+def _processes():
+    try:
+        out = subprocess.run(['ps', '-eo', 'pid,comm,rss', '--sort=-rss'],
+                             capture_output=True, text=True, timeout=2).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    rows = []
+    for line in out.splitlines()[1:7]:
+        parts = line.split(None, 2)
+        if len(parts) == 3:
+            rows.append({'pid': int(parts[0]), 'name': parts[1],
+                         'rss_mb': round(int(parts[2]) / 1024, 1)})
+    return rows
+
+
+def _update_status():
+    try:
+        with open('/var/lib/thinksmart-update/status.json') as f:
+            d = json.load(f)
+        return {'current': d.get('current'), 'available': d.get('available'),
+                'check_error': d.get('check_error')}
+    except (OSError, ValueError):
+        return None
+
+
+def _collect_status(client):
+    snap = client.snapshot()
+    health = client.health()
+    music = snap.get('music') or {}
+    status = snap.get('status') or {}
+    try:
+        with open('/proc/loadavg') as f:
+            load = [float(x) for x in f.read().split()[:3]]
+    except (OSError, ValueError):
+        load = []
+    try:
+        with open('/proc/uptime') as f:
+            uptime = int(float(f.read().split()[0]))
+    except (OSError, ValueError):
+        uptime = 0
+    music_view = None
+    if music:
+        music_view = {key: music.get(key) for key in
+                      ('state', 'id', 'title', 'artists', 'position', 'duration', 'paused', 'queue', 'index')}
+    return {
+        'version': __version__,
+        'uptime_s': uptime,
+        'cpu': {'cores': os.cpu_count(), 'used_percent': _cpu_percent(), 'load': load},
+        'memory': _read_meminfo(),
+        'disk': _disk(),
+        'temperature_c': _temperature(),
+        'services': {
+            'client': _service('thinksmart-client.service'),
+            'kiosk': _service('thinksmart-kiosk.service'),
+            'hub': _service('xiaozhi-hub.service', user=True),
+        },
+        'processes': _processes(),
+        'client': {'state': status.get('state'), 'connected': status.get('connected'),
+                   'audio': health.get('audio'), 'hub': health.get('hub')},
+        'music': music_view,
+        'update': _update_status(),
+    }
+
 
 
 def make_app(client: Client):
@@ -57,6 +192,18 @@ def make_app(client: Client):
         asyncio.create_task(client.say(body.get('text', '')))
         return web.json_response({'ok': True})
 
+    async def music(request):
+        body = await request.json()
+        asyncio.create_task(client.music_action(body.get('action', ''), body.get('value', '')))
+        return web.json_response({'ok': True})
+
+    async def netease_login_action(request):
+        body = await request.json()
+        action = body.get('action')
+        if action not in ('refresh', 'cancel') or set(body) != {'action', 'task_id'}:
+            return web.json_response({'ok': False, 'error': '请求无效'}, status=400)
+        result = await client.netease_login_action(action, body.get('task_id'))
+        return web.json_response(result, status=200 if result.get('ok') else 400)
     async def model(request):
         body = await request.json()
         return web.json_response(await client.set_model(body.get('kind'), body.get('vendor'), body.get('entry')))
@@ -140,6 +287,9 @@ def make_app(client: Client):
     async def health(_request):
         return web.json_response({'version': __version__, **client.health()})
 
+    async def status(_request):
+        return web.json_response(await asyncio.to_thread(_collect_status, client))
+
     async def power_off(_request):
         return web.json_response(await client.power_off())
 
@@ -172,6 +322,9 @@ def make_app(client: Client):
     app.router.add_post('/api/ptt/stop', action(client.ptt_stop))
     app.router.add_post('/api/model', model)
     app.router.add_post('/api/text', text)
+    app.router.add_post('/api/music', music)
+    app.router.add_post('/api/netease/login/refresh', netease_login_action)
+    app.router.add_post('/api/netease/login/cancel', netease_login_action)
     app.router.add_post('/api/sleep', sleep_setting)
     app.router.add_post('/api/brightness', brightness)
     app.router.add_post('/api/screen-off', screen_off)
@@ -185,6 +338,7 @@ def make_app(client: Client):
     app.router.add_post('/api/reports/play', action(client.play_reports))
     app.router.add_post('/api/history/clear', clear_history)
     app.router.add_get('/api/health', health)
+    app.router.add_get('/api/status', status)
     app.router.add_get('/api/network', network)
     app.router.add_post('/api/power-off', power_off)
     app.router.add_post('/api/update/check', update_check)
