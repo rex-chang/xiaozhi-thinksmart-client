@@ -1,7 +1,9 @@
 """Software updates, as far as the client is concerned: show what the root updater found, ask it to install.
 
 The updater (thinksmart-update, system layer: thinksmart-ubuntu-image/update/) checks after boot and once a
-day and never installs by itself. The client runs as ubuntu and installs nothing: it reads the
+day and never installs by itself. It updates the client and the system layer (shell, welcome page,
+audio and Bluetooth configuration...): the status file has the client at the top level and the system
+layer under "system". The client runs as ubuntu and installs nothing: it reads the
 updater's status file and drops a request file that a systemd path unit hands to the root service,
 which installs only the version it checked and verified itself, whatever the request says.
 """
@@ -28,11 +30,12 @@ def read():
         return {'enabled': True}
 
 
-def request(action, version=''):
-    """Ask the updater to 'check' or to 'install' version; False if it isn't installed/allowed."""
+def request(action, version='', system=''):
+    """Ask the updater to 'check', or to 'install' the client version and/or the system layer version
+    (system first); False if it isn't installed/allowed."""
     try:
         tmp = REQUESTS / f'.{action}.tmp'
-        tmp.write_text(json.dumps({'action': action, 'version': version}))
+        tmp.write_text(json.dumps({'action': action, 'version': version, 'system': system}))
         os.replace(tmp, REQUESTS / action)
         return True
     except OSError as e:

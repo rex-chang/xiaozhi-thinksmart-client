@@ -18,6 +18,9 @@ PrivateDevices=yes
 BindReadOnlyPaths=/dev/input
 DeviceAllow=char-input r
 ExecStartPre=/bin/sh -c 'until [ -S /run/user/1000/pulse/native ]; do sleep 2; done'
+# Root (+), failure ignored (-): devices from the 20261101 image get the updater that also installs the
+# system layer (deploy/bootstrap-updater; a no-op once they have it)
+ExecStartPre=-+/opt/thinksmart/client/current/deploy/bootstrap-updater
 ExecStart=/opt/thinksmart/client/current/.venv/bin/python -m thinksmart_client
 Restart=always
 RestartSec=5

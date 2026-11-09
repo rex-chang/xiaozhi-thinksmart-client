@@ -1,0 +1,17 @@
+#!/bin/sh
+# Runs as root before the client starts (thinksmart-client.service: ExecStartPre=-+). Devices
+# flashed with the 20261101 image have an updater that installs only the client, so they could
+# never see a system layer update. A release built with the system layer (make-release.py --system)
+# carries the image repository's updater in deploy/updater/: when it is newer than the installed
+# one, put it in place (the updater script only; the system layer update then brings the rest).
+# Does nothing on devices that already have it, and never stops the client from starting.
+here=$(dirname "$0")
+new=$here/updater/thinksmart-update
+old=/usr/local/sbin/thinksmart-update
+[ -f "$new" ] && [ -f "$old" ] || exit 0
+ver() { sed -n 's/^UPDATER_VERSION = \([0-9][0-9]*\).*/\1/p' "$1" | head -n 1; }
+nv=$(ver "$new"); ov=$(ver "$old")
+[ "${nv:-0}" -gt "${ov:-1}" ] || exit 0
+/usr/bin/python3 "$new" selftest >/dev/null || exit 0
+install -m 755 "$new" "$old.bootstrap" && mv -f "$old.bootstrap" "$old" && echo "bootstrap-updater: updater ${ov:-1} -> $nv"
+exit 0

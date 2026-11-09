@@ -284,6 +284,12 @@ def make_app(client: Client):
         body = await request.json()
         return web.json_response(await client.clear_history(bool(body.get('memory_only'))))
 
+    async def bluetooth(request):
+        body = await request.json()
+        args = {k: body[k] for k in ('enabled', 'window', 'remove', 'disconnect') if k in body}
+        ok = await client.bluetooth(**args)
+        return web.json_response({'ok': bool(ok), **({} if ok else {'error': '蓝牙没有响应'})})
+
     async def health(_request):
         return web.json_response({'version': __version__, **client.health()})
 
@@ -303,7 +309,8 @@ def make_app(client: Client):
         if client.state != 'idle':
             return web.json_response({'ok': False, 'error': '对话结束后再更新'}, status=409)
         body = await request.json()
-        return web.json_response({'ok': update.request('install', str(body.get('version', '')))})
+        return web.json_response({'ok': update.request('install', str(body.get('version') or ''),
+                                                       str(body.get('system') or ''))})
 
     watchers = []   # keeps the task referenced
 
@@ -337,6 +344,7 @@ def make_app(client: Client):
     app.router.add_post('/api/alarms/missed/clear', alarm_missed_clear)
     app.router.add_post('/api/reports/play', action(client.play_reports))
     app.router.add_post('/api/history/clear', clear_history)
+    app.router.add_post('/api/bluetooth', bluetooth)
     app.router.add_get('/api/health', health)
     app.router.add_get('/api/status', status)
     app.router.add_get('/api/network', network)

@@ -9,7 +9,9 @@ cancellation stops working.
 Capture: 16 kHz mono in 20 ms blocks. The callback only queues; a worker thread runs echo
 cancellation and hands each cleaned block to on_block (wake word, upload, level meter).
 Playback: 48 kHz stereo from a buffer; everything that is played (replies and local
-sounds) is also what echo cancellation subtracts.
+sounds) is also what echo cancellation subtracts. Background sound (a phone playing through
+Bluetooth, bt.py) is added to it in the same callback, with its own gain (lowered during a
+conversation): the canceller subtracts it too, so the wake word still works while music plays.
 
 If PipeWire restarts, the streams stop (or hang) and their callbacks no longer run while the process
 lives on: no wake word ever again. stalled() notices it and the client exits for systemd to restart it.
@@ -154,10 +156,73 @@ class Player:
             self._size = sum(len(c) for c in kept)
 
 
+class Background:
+    """Sound from outside that plays under the replies (a phone over Bluetooth): 48 kHz stereo
+    float32 pushed as it arrives (from another clock), pulled by the speaker callback.
+
+    Its own gain follows `target` smoothly (down in DUCK_DOWN s, up in DUCK_UP s): the client lowers
+    it during a conversation and mutes it while an alarm rings. The queue is kept short: it starts
+    once PRIME is queued and, because the phone's clock and the speaker's drift apart, drops back to
+    PRIME whenever more than MAX_LAG has piled up. Running dry fades out; what follows fades in.
+    """
+    PRIME = 0.08     # seconds queued before playing (and after running dry)
+    MAX_LAG = 0.4    # more than this queued: drop the oldest down to PRIME
+    DUCK_DOWN = 0.3
+    DUCK_UP = 1.0
+    SILENT = 1e-4    # |sample| below this doesn't count as sound (for the echo canceller's timing)
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._q = np.zeros((0, 2), dtype=np.float32)
+        self._primed = False
+        self.gain = 1.0
+        self.target = 1.0
+        self.last_sound = 0.0   # monotonic: something audible was last played
+        self.level = 0.0
+
+    def push(self, stereo):
+        with self._lock:
+            self._q = np.concatenate([self._q, stereo]) if len(self._q) else stereo
+            if len(self._q) > self.MAX_LAG * OUT_RATE:
+                self._q = self._q[len(self._q) - int(self.PRIME * OUT_RATE):]
+
+    def clear(self):
+        with self._lock:
+            self._q = np.zeros((0, 2), dtype=np.float32)
+            self._primed = False
+
+    def pull(self, n):
+        """n frames to add to the speaker's, or None when there is nothing to add."""
+        with self._lock:
+            if not self._primed and len(self._q) < self.PRIME * OUT_RATE:
+                self.level = 0.0
+                return None
+            self._primed = True
+            out = self._q[:n]
+            self._q = self._q[n:]
+            if len(out) < n:   # ran dry: fade out what there is, play silence, prime again
+                self._primed = False
+                k = min(FADE, len(out))
+                out = np.concatenate([out[:len(out) - k], out[len(out) - k:] * _ramp(k)[::-1],
+                                      np.zeros((n - len(out), 2), dtype=np.float32)])
+        # gain ramp towards the target, per sample
+        step = 1.0 / ((self.DUCK_DOWN if self.target < self.gain else self.DUCK_UP) * OUT_RATE)
+        end = self.gain + max(-step * n, min(step * n, self.target - self.gain))
+        g = np.linspace(self.gain, end, n, dtype=np.float32)[:, None]
+        self.gain = float(end)
+        out = out * g
+        peak = float(np.abs(out).max())
+        self.level = float(np.sqrt(np.mean(out ** 2)))
+        if peak > self.SILENT:
+            self.last_sound = time.monotonic()
+        return out
+
+
 class Audio:
     def __init__(self, on_block):
         self.on_block = on_block          # called on the worker thread: on_block(block, wake_block), 20 ms
         self.player = Player()
+        self.background = Background()
         self.aec = Aec(MIC_RATE, OUT_RATE)
         self.mic_level = 0.0
         # Echo cancellation costs ~21% of a core, so it runs only during a conversation
@@ -193,7 +258,11 @@ class Audio:
         self.last_out = time.monotonic()
         if status and len(self.player.late) < 100:
             self.player.late.append(str(status))
-        outdata[:] = self.player.pull(frames)
+        out = self.player.pull(frames)
+        bg = self.background.pull(frames)
+        if bg is not None:
+            out = np.clip(out + bg, -1.0, 1.0)
+        outdata[:] = out
         self.aec.feed_far(outdata)
 
     def _work(self):
@@ -201,7 +270,7 @@ class Audio:
             block = raw = self._q.get()
             self.last_in = time.monotonic()
             wake_block = None
-            since_sound = time.monotonic() - self.player.last_sound
+            since_sound = time.monotonic() - max(self.player.last_sound, self.background.last_sound)
             if self.aec_hold or since_sound < 3:
                 try:
                     block = self.aec.process_near(block)
